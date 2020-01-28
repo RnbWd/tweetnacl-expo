@@ -2375,7 +2375,7 @@ nacl.setPRNG = function(fn) {
           var i, v = B64.toByteArray(bytes);
           for (i = 0; i < n; i++) x[i] = v[i];
           cleanup(v);
-          resolve(true) 
+          res(true) 
         });
       });
     });
