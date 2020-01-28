@@ -14,7 +14,7 @@ var gf = function(init) {
 };
 
 //  Pluggable, initialized in high-level API below.
-var randombytes = function(/* x, n */) { throw new Error('no PRNG'); };
+var randombytes = async function(/* x, n */) { throw new Error('no PRNG'); };
 
 var _0 = new Uint8Array(16);
 var _9 = new Uint8Array(32); _9[0] = 9;
@@ -1378,8 +1378,8 @@ function crypto_scalarmult_base(q, n) {
   return crypto_scalarmult(q, n, _9);
 }
 
-function crypto_box_keypair(y, x) {
-  randombytes(x, 32);
+async function crypto_box_keypair(y, x) {
+  await randombytes(x, 32);
   return crypto_scalarmult_base(y, x);
 }
 
@@ -1914,12 +1914,12 @@ function scalarbase(p, s) {
   scalarmult(p, q, s);
 }
 
-function crypto_sign_keypair(pk, sk, seeded) {
+async function crypto_sign_keypair(pk, sk, seeded) {
   var d = new Uint8Array(64);
   var p = [gf(), gf(), gf(), gf()];
   var i;
 
-  if (!seeded) randombytes(sk, 32);
+  if (!seeded) await randombytes(sk, 32);
   crypto_hash(d, sk, 32);
   d[0] &= 248;
   d[31] &= 127;
@@ -2144,7 +2144,7 @@ nacl.lowlevel = {
   set25519: set25519,
   modL: modL,
   scalarmult: scalarmult,
-  scalarbase: scalarbase,
+  scalarbase: scalarbase
 };
 
 /* High-level API */
@@ -2170,9 +2170,9 @@ function cleanup(arr) {
   for (var i = 0; i < arr.length; i++) arr[i] = 0;
 }
 
-nacl.randomBytes = function(n) {
+nacl.randomBytes = async function(n) {
   var b = new Uint8Array(n);
-  randombytes(b, n);
+  await randombytes(b, n);
   return b;
 };
 
@@ -2243,10 +2243,10 @@ nacl.box.open = function(msg, nonce, publicKey, secretKey) {
 
 nacl.box.open.after = nacl.secretbox.open;
 
-nacl.box.keyPair = function() {
+nacl.box.keyPair = async function() {
   var pk = new Uint8Array(crypto_box_PUBLICKEYBYTES);
   var sk = new Uint8Array(crypto_box_SECRETKEYBYTES);
-  crypto_box_keypair(pk, sk);
+  await crypto_box_keypair(pk, sk);
   return {publicKey: pk, secretKey: sk};
 };
 
@@ -2307,10 +2307,10 @@ nacl.sign.detached.verify = function(msg, sig, publicKey) {
   return (crypto_sign_open(m, sm, sm.length, publicKey) >= 0);
 };
 
-nacl.sign.keyPair = function() {
+nacl.sign.keyPair = async function() {
   var pk = new Uint8Array(crypto_sign_PUBLICKEYBYTES);
   var sk = new Uint8Array(crypto_sign_SECRETKEYBYTES);
-  crypto_sign_keypair(pk, sk);
+  await crypto_sign_keypair(pk, sk);
   return {publicKey: pk, secretKey: sk};
 };
 
@@ -2323,14 +2323,14 @@ nacl.sign.keyPair.fromSecretKey = function(secretKey) {
   return {publicKey: pk, secretKey: new Uint8Array(secretKey)};
 };
 
-nacl.sign.keyPair.fromSeed = function(seed) {
+nacl.sign.keyPair.fromSeed = async function(seed) {
   checkArrayTypes(seed);
   if (seed.length !== crypto_sign_SEEDBYTES)
     throw new Error('bad seed size');
   var pk = new Uint8Array(crypto_sign_PUBLICKEYBYTES);
   var sk = new Uint8Array(crypto_sign_SECRETKEYBYTES);
   for (var i = 0; i < 32; i++) sk[i] = seed[i];
-  crypto_sign_keypair(pk, sk, true);
+  await crypto_sign_keypair(pk, sk, true);
   return {publicKey: pk, secretKey: sk};
 };
 
@@ -2363,29 +2363,22 @@ nacl.setPRNG = function(fn) {
 (function() {
   // Initialize PRNG if environment provides CSPRNG.
   // If not, methods calling randombytes will throw.
-  var crypto = typeof self !== 'undefined' ? (self.crypto || self.msCrypto) : null;
-  if (crypto && crypto.getRandomValues) {
-    // Browsers.
-    var QUOTA = 65536;
-    nacl.setPRNG(function(x, n) {
-      var i, v = new Uint8Array(n);
-      for (i = 0; i < n; i += QUOTA) {
-        crypto.getRandomValues(v.subarray(i, i + Math.min(n - i, QUOTA)));
-      }
-      for (i = 0; i < n; i++) x[i] = v[i];
-      cleanup(v);
-    });
-  } else if (typeof require !== 'undefined') {
     // Node.js.
-    crypto = require('crypto');
-    if (crypto && crypto.randomBytes) {
-      nacl.setPRNG(function(x, n) {
-        var i, v = crypto.randomBytes(n);
-        for (i = 0; i < n; i++) x[i] = v[i];
-        cleanup(v);
+    var B64 = require('base64-js');
+    var NativeModules = require('react-native').NativeModules;
+    var RNRandomBytes = NativeModules.RNRandomBytes;
+  
+    nacl.setPRNG(function(x, n) {
+      return new Promise(function(res, rej) {
+        RNRandomBytes.randomBytes(n, function(err, bytes) {
+          if (err) { rej(err); return; }
+          var i, v = B64.toByteArray(bytes);
+          for (i = 0; i < n; i++) x[i] = v[i];
+          cleanup(v);
+          resolve(true) 
+        });
       });
-    }
-  }
+    });
 })();
 
 })(typeof module !== 'undefined' && module.exports ? module.exports : (self.nacl = self.nacl || {}));

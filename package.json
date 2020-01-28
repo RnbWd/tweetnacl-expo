@@ -49,6 +49,10 @@
     "tweetnacl-util": "^0.15.0",
     "uglify-js": "^3.7.5"
   },
+  "peerDependencies": {
+    "react-native-aes ": "https://github.com/BrightID/react-native-aes",
+    "base64-js": "*"
+  },
   "browser": {
     "buffer": false,
     "crypto": false
